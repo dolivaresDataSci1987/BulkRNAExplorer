@@ -1,0 +1,37 @@
+{
+  "n_files": 9,
+  "genes": 60649,
+  "samples": 9,
+  "sample_names": [
+    "ID1",
+    "ID2",
+    "ID3",
+    "ID4",
+    "ID5",
+    "ID6",
+    "ID7",
+    "ID8",
+    "ID9"
+  ],
+  "conditions": {
+    "CDDP_R": 3,
+    "DTX_R": 3,
+    "Sensitive": 3
+  },
+  "batches": {
+    "Exp2": 3,
+    "Exp3": 3,
+    "Exp4": 3
+  },
+  "library_sizes": {
+    "ID1": 99665437,
+    "ID2": 37394301,
+    "ID3": 37274745,
+    "ID4": 90003413,
+    "ID5": 88887315,
+    "ID6": 91150409,
+    "ID7": 92212199,
+    "ID8": 57199907,
+    "ID9": 93321908
+  }
+}
