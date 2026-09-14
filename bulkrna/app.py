@@ -26,6 +26,7 @@ from bulkrna.enrichment import run_prerank_gsea
 from bulkrna.overlap import venn_figure, exclusive_to_each
 from bulkrna.plots import pca_figure, volcano_figure, heatmap_figure
 from bulkrna.custom_gsea import render_custom_gsea
+from bulkrna.ora import render_ora_panel
 
 
 @st.cache_data(show_spinner=False, ttl=24 * 3600)
@@ -41,6 +42,7 @@ def reset_analyses():
     st.session_state.analysis_history = {}
     st.session_state.gsea_history = {}
     st.session_state.pop("active_analysis", None)
+    st.session_state.pop("ora_last", None)
 
 
 def current_analysis():
@@ -598,6 +600,17 @@ def main():
                                 "Download selected Venn region (CSV)",
                                 to_csv_bytes(region_table),
                                 file_name="venn_region_genes.csv",
+                            )
+                            render_ora_panel(
+                                history=history,
+                                selected_comparisons=selected_comparisons,
+                                region_name=region_name,
+                                region_genes=region_genes,
+                                annotation=st.session_state.annotation,
+                                species=organism,
+                                direction_key=dir_key,
+                                padj_cut=float(vp),
+                                lfc_cut=float(vl),
                             )
                         else:
                             st.info("Select exactly 2 or 3 saved comparisons to draw a Venn diagram.")
