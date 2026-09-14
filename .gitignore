@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+.streamlit/secrets.toml
+.DS_Store
+results/
+data/
+*.tabular
+*.fastq.gz
+*.bam
