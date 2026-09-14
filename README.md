@@ -2,51 +2,51 @@
 
 A click-first bulk RNA-seq app for collaborators who should not need Python, R, Galaxy or local software installation.
 
-## What this version does
+## Current features
 
 - Upload multiple Galaxy/featureCounts tables.
-- Auto-detect sample IDs, Sensitive / CDDP_R / DTX_R and Exp2/3/4 when present in filenames.
+- Auto-detect sample IDs, conditions and Exp/batch labels when present in filenames.
 - Edit sample metadata in the browser.
-- Filter low-count genes.
+- Select **exactly which samples** belong to Group A and Group B for each differential-expression comparison.
 - Run PyDESeq2 on raw integer counts.
 - Calculate DESeq2 normalized counts and VST expression.
-- PCA.
-- Differential-expression tables and volcano plots.
-- Automatic contrasts of every condition versus a selected reference.
-- Common UP / common DOWN genes across contrasts.
-- Gene-panel heatmaps using Ensembl IDs.
-- Download normalized counts, VST matrices, DEG tables and a results ZIP.
+- PCA for the samples included in each comparison.
+- Ensembl ID → gene symbol / gene name annotation for human or mouse.
+- Volcano plots showing gene symbols and names.
+- Annotated differential-expression tables.
+- Top-DEG heatmaps with any requested number of genes.
+- Custom gene-panel heatmaps entered by **gene symbol**.
+- Save multiple comparisons during the same session and calculate Common UP / Common DOWN genes.
+- Pre-ranked GSEA using the PyDESeq2 Wald statistic with Hallmark, GO, Reactome or KEGG gene sets.
+- Download normalized counts, VST matrices, annotated DEG tables, gene annotation and results ZIPs.
 
 ## Deploy on Streamlit Community Cloud
 
-1. Create a new GitHub repository, e.g. `BulkRNAExplorer`.
-2. Upload **all files and folders from this ZIP** to the repository root.
-3. Go to https://share.streamlit.io and sign in with GitHub.
-4. Click **Create app** and choose the repository.
-5. Entrypoint: `streamlit_app.py`.
-6. Open **Advanced settings** and select **Python 3.12**.
-7. Deploy.
-8. Share the resulting `https://....streamlit.app` URL with collaborators.
+1. Connect this repository to Streamlit Community Cloud.
+2. Entrypoint: `streamlit_app.py`.
+3. Use Python 3.12.
+4. Deploy and share the resulting Streamlit URL.
 
 No Python installation is required on collaborators' computers.
 
 ## Data privacy
 
-The application code does not create a database or intentionally persist uploaded counts. However, if you deploy on a third-party cloud, uploaded research data are processed on that provider's server. For unpublished/sensitive datasets, confirm that this is acceptable under your institution's data policy or deploy the same repository on an institutional server.
+The application code does not create a database or intentionally persist uploaded counts. However, when deployed on a third-party cloud, uploaded research data are processed on that provider's server. For unpublished or sensitive datasets, confirm that this is acceptable under your institution's data policy or deploy the same repository on an institutional server.
 
-## Important scientific notes
+## Scientific notes
 
 - Differential expression requires **raw integer counts**, not TPM/FPKM/CPM.
-- Paired-end R1/R2 FASTQ files are not biological replicates. featureCounts should yield one count profile per biological sample/library.
-- Only enable batch correction when the `batch` field represents a genuine nuisance factor and the design is identifiable.
-- This prototype is for exploratory analysis and should be validated against your established pipeline before publication.
+- Paired-end R1/R2 FASTQ files are not biological replicates.
+- A differential-expression comparison should normally contain biological replicates in both groups; the app requires at least two samples per group.
+- Positive log2 fold-change means higher expression in **Group B relative to Group A**.
+- Only enable batch correction when the batch variable is real and the design is identifiable.
+- GSEA ranks all annotated genes by the PyDESeq2 Wald statistic; it does not restrict the analysis to statistically significant DEGs.
+- Gene annotation and online Enrichr gene-set libraries require outbound internet access from the Streamlit server.
+- This application is intended for exploratory analysis and should be validated against an established pipeline before publication.
 
-## Next planned functions
+## Planned next additions
 
-- Gene symbol ↔ Ensembl annotation bundled for human/mouse.
-- Built-in PAM50 and BCL2-family panels.
-- Custom panel upload by gene symbol.
-- GO over-representation analysis for Common UP/DOWN.
-- Pre-ranked GSEA.
-- Publication-quality figure export (SVG/PDF).
+- Built-in PAM50, BCL2-family and curated stemness panels.
+- GO over-representation analysis directly from Common UP / Common DOWN genes.
+- Publication-quality SVG/PDF export.
 - Project save/reopen.
