@@ -86,6 +86,8 @@ def make_prerank_table(res_annotated: pd.DataFrame) -> pd.DataFrame:
     if d.empty:
         raise ValueError("No annotated genes with valid ranking statistics are available.")
 
+    # One ranking value per symbol. If several Ensembl IDs map to the same symbol,
+    # keep the one with the strongest absolute Wald statistic.
     d["_abs"] = d["stat"].abs()
     d = d.sort_values("_abs", ascending=False).drop_duplicates("gene_symbol", keep="first")
     d = d.sort_values("stat", ascending=False)
@@ -93,45 +95,80 @@ def make_prerank_table(res_annotated: pd.DataFrame) -> pd.DataFrame:
 
 
 def _finish_prerank(pre, rank: pd.DataFrame, label: str) -> tuple[pd.DataFrame, pd.DataFrame, str]:
-    results = pre.res2d.copy()
-    if results is None or results.empty:
+    # Some GSEApy runs legitimately return no table after gene-set filtering.
+    # Check for None before attempting .copy(), otherwise the UI receives an
+    # avoidable AttributeError.
+    raw_results = getattr(pre, "res2d", None)
+    if raw_results is None:
+        return pd.DataFrame(), rank, label
+    results = raw_results.copy()
+    if results.empty:
         return pd.DataFrame(), rank, label
 
     for col in ["ES", "NES", "NOM p-val", "FDR q-val", "FWER p-val"]:
         if col in results.columns:
             results[col] = pd.to_numeric(results[col], errors="coerce")
-    if "FDR q-val" in results.columns:
+    if "FDR q-val" in results.columns and "NES" in results.columns:
         results = results.sort_values(["FDR q-val", "NES"], ascending=[True, False])
+    elif "FDR q-val" in results.columns:
+        results = results.sort_values("FDR q-val", ascending=True)
     elif "NES" in results.columns:
         results = results.reindex(results["NES"].abs().sort_values(ascending=False).index)
     return results, rank, label
+
+
+def _run_prerank(
+    rank: pd.DataFrame,
+    gene_sets,
+    species: str,
+    permutation_num: int,
+    min_size: int,
+    max_size: int,
+    seed: int,
+):
+    """Memory-conscious GSEApy prerank runner for small cloud instances.
+
+    GSEApy 1.3.x supports the multilevel/fgsea-style estimator. It avoids the
+    large classic permutation tensors that can terminate a Streamlit Community
+    Cloud process when a collection contains thousands of pathways. One thread
+    also avoids multiplying peak memory usage.
+    """
+    return gp.prerank(
+        rnk=rank,
+        gene_sets=gene_sets,
+        organism=species,
+        outdir=None,
+        permutation_num=max(50, int(permutation_num)),
+        min_size=int(min_size),
+        max_size=int(max_size),
+        threads=1,
+        seed=int(seed),
+        no_plot=True,
+        verbose=False,
+        method="multilevel",
+    )
 
 
 def run_prerank_gsea(
     res_annotated: pd.DataFrame,
     library: str,
     species: str = "human",
-    permutation_num: int = 500,
+    permutation_num: int = 250,
     min_size: int = 15,
     max_size: int = 500,
     seed: int = 7,
-    threads: int = 2,
+    threads: int = 1,
 ) -> tuple[pd.DataFrame, pd.DataFrame, str]:
     actual_library = resolve_library(library, species)
     rank = make_prerank_table(res_annotated)
-
-    pre = gp.prerank(
-        rnk=rank,
+    pre = _run_prerank(
+        rank=rank,
         gene_sets=actual_library,
-        organism=species,
-        outdir=None,
-        permutation_num=int(permutation_num),
-        min_size=int(min_size),
-        max_size=int(max_size),
-        threads=int(threads),
-        seed=int(seed),
-        no_plot=True,
-        verbose=False,
+        species=species,
+        permutation_num=permutation_num,
+        min_size=min_size,
+        max_size=max_size,
+        seed=seed,
     )
     return _finish_prerank(pre, rank, actual_library)
 
@@ -141,11 +178,11 @@ def run_prerank_gsea_gene_sets(
     gene_sets: Mapping[str, Sequence[str]],
     label: str = "Custom gene sets",
     species: str = "human",
-    permutation_num: int = 500,
+    permutation_num: int = 250,
     min_size: int = 10,
     max_size: int = 1000,
     seed: int = 7,
-    threads: int = 2,
+    threads: int = 1,
 ) -> tuple[pd.DataFrame, pd.DataFrame, str]:
     """Run pre-ranked GSEA against an explicit dictionary of selected/custom gene sets."""
     cleaned: dict[str, list[str]] = {}
@@ -159,18 +196,14 @@ def run_prerank_gsea_gene_sets(
         raise ValueError("No valid custom gene sets were supplied.")
 
     rank = make_prerank_table(res_annotated)
-    pre = gp.prerank(
-        rnk=rank,
+    pre = _run_prerank(
+        rank=rank,
         gene_sets=cleaned,
-        organism=species,
-        outdir=None,
-        permutation_num=int(permutation_num),
-        min_size=int(min_size),
-        max_size=int(max_size),
-        threads=int(threads),
-        seed=int(seed),
-        no_plot=True,
-        verbose=False,
+        species=species,
+        permutation_num=permutation_num,
+        min_size=min_size,
+        max_size=max_size,
+        seed=seed,
     )
     return _finish_prerank(pre, rank, label)
 
@@ -190,4 +223,6 @@ def matched_gene_set_sizes(
             "genes_supplied": len(supplied),
             "genes_matched": len(matched),
         })
+    if not rows:
+        return pd.DataFrame(columns=["gene_set", "genes_supplied", "genes_matched"])
     return pd.DataFrame(rows).sort_values(["genes_matched", "gene_set"], ascending=[False, True])
