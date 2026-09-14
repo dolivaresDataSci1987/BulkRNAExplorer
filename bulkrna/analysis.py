@@ -185,6 +185,13 @@ def classify_degs(res: pd.DataFrame, padj_cut: float, lfc_cut: float) -> pd.Seri
     return status
 
 
+def _rank_deg_table(d: pd.DataFrame) -> pd.DataFrame:
+    if d.empty:
+        return d
+    d = d.assign(_abs_lfc=d["log2FoldChange"].abs())
+    return d.sort_values(["padj", "_abs_lfc"], ascending=[True, False])
+
+
 def top_deg_gene_ids(
     res: pd.DataFrame,
     n: int,
@@ -192,14 +199,65 @@ def top_deg_gene_ids(
     lfc_cut: float = 0.0,
 ) -> list[str]:
     """Top N significant DE genes, ranked by padj then |log2FC|."""
+    return select_top_deg_gene_ids(
+        res,
+        n=n,
+        padj_cut=padj_cut,
+        lfc_cut=lfc_cut,
+        direction="both_total",
+    )
+
+
+def select_top_deg_gene_ids(
+    res: pd.DataFrame,
+    n: int,
+    padj_cut: float = 0.05,
+    lfc_cut: float = 0.0,
+    direction: str = "both_total",
+) -> list[str]:
+    """Select DE genes for heatmaps.
+
+    direction:
+      - up_b: positive log2FC, higher in Group B
+      - up_a: negative log2FC, higher in Group A
+      - both_total: top N across both directions
+      - both_balanced: top N from each direction (up to 2N genes)
+    """
     d = res.copy()
     d = d[d["padj"].notna()]
-    d = d[(d["padj"] <= float(padj_cut)) & (d["log2FoldChange"].abs() >= float(lfc_cut))]
-    if d.empty:
-        return []
-    d = d.assign(_abs_lfc=d["log2FoldChange"].abs())
-    d = d.sort_values(["padj", "_abs_lfc"], ascending=[True, False])
-    return [str(x) for x in d.head(int(n)).index]
+    d = d[d["padj"] <= float(padj_cut)]
+    n = max(1, int(n))
+    lfc = float(lfc_cut)
+
+    up_b = _rank_deg_table(d[d["log2FoldChange"] >= lfc])
+    up_a = _rank_deg_table(d[d["log2FoldChange"] <= -lfc])
+
+    if direction == "up_b":
+        selected = up_b.head(n)
+    elif direction == "up_a":
+        selected = up_a.head(n)
+    elif direction == "both_balanced":
+        ids = list(up_b.head(n).index.astype(str)) + list(up_a.head(n).index.astype(str))
+        return list(dict.fromkeys(ids))
+    else:
+        selected = _rank_deg_table(
+            d[d["log2FoldChange"].abs() >= lfc]
+        ).head(n)
+    return [str(x) for x in selected.index]
+
+
+def significant_gene_set(
+    res: pd.DataFrame,
+    padj_cut: float,
+    lfc_cut: float,
+    direction: str = "all",
+) -> set[str]:
+    status = classify_degs(res, padj_cut, lfc_cut)
+    if direction == "up":
+        return set(status.index[status == "UP"].astype(str))
+    if direction == "down":
+        return set(status.index[status == "DOWN"].astype(str))
+    return set(status.index[status.isin(["UP", "DOWN"])].astype(str))
 
 
 def common_deg_sets(results: Dict[str, pd.DataFrame], padj_cut: float, lfc_cut: float):
