@@ -1,0 +1,10 @@
+sample,condition,batch,include
+ID1,Sensitive,Exp2,True
+ID2,CDDP_R,Exp2,True
+ID3,DTX_R,Exp2,True
+ID4,Sensitive,Exp3,True
+ID5,CDDP_R,Exp3,True
+ID6,DTX_R,Exp3,True
+ID7,Sensitive,Exp4,True
+ID8,CDDP_R,Exp4,True
+ID9,DTX_R,Exp4,True
