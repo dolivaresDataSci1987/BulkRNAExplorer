@@ -17,7 +17,7 @@ class AnalysisBundle:
     metadata: pd.DataFrame
     norm_counts: pd.DataFrame
     vst_counts: pd.DataFrame
-    dds: object
+    dds: object | None
     results: Dict[str, pd.DataFrame]
     comparison_name: str
     group_a_name: str
@@ -116,10 +116,15 @@ def run_deseq_comparison(
     )
     dds.deseq2()
 
+    # Keep only the matrices/results that the interactive app needs after the
+    # analysis. The complete DeseqDataSet contains many fitted arrays and can
+    # become the largest object in Streamlit session_state, especially after
+    # saving several comparisons.
     norm = pd.DataFrame(
         dds.layers["normed_counts"],
         index=sxg.index,
         columns=sxg.columns,
+        dtype="float32",
     ).T
     try:
         dds.vst(use_design=False)
@@ -127,9 +132,10 @@ def run_deseq_comparison(
             dds.layers["vst_counts"],
             index=sxg.index,
             columns=sxg.columns,
+            dtype="float32",
         ).T
     except Exception:
-        vst = np.log2(norm + 1.0)
+        vst = np.log2(norm + 1.0).astype("float32")
 
     stats = DeseqStats(
         dds,
@@ -143,12 +149,18 @@ def run_deseq_comparison(
     res.index.name = "Geneid"
 
     comparison_name = f"{group_b_name} vs {group_a_name}"
+
+    # Do not retain the fitted dds/stats objects in the browser session. All
+    # downstream features (PCA, heatmaps, GSEA, exports) use norm/vst/results.
+    del stats
+    del dds
+
     return AnalysisBundle(
         counts_filtered=filtered,
         metadata=md,
         norm_counts=norm,
         vst_counts=vst,
-        dds=dds,
+        dds=None,
         results={comparison_name: res},
         comparison_name=comparison_name,
         group_a_name=group_a_name,
