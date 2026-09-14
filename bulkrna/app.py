@@ -25,6 +25,7 @@ from bulkrna.annotation import (
 from bulkrna.enrichment import run_prerank_gsea
 from bulkrna.overlap import venn_figure, exclusive_to_each
 from bulkrna.plots import pca_figure, volcano_figure, heatmap_figure
+from bulkrna.custom_gsea import render_custom_gsea
 
 
 @st.cache_data(show_spinner=False, ttl=24 * 3600)
@@ -139,13 +140,14 @@ def main():
             reset_analyses()
             st.rerun()
 
-    upload_tab, setup_tab, analysis_tab, panels_tab, gsea_tab, export_tab = st.tabs([
+    upload_tab, setup_tab, analysis_tab, panels_tab, gsea_tab, custom_gsea_tab, export_tab = st.tabs([
         "1 · Upload",
         "2 · Samples",
         "3 · Differential expression",
         "4 · Gene heatmaps",
         "5 · GSEA",
-        "6 · Export",
+        "6 · Custom GSEA",
+        "7 · Download",
     ])
 
     with upload_tab:
@@ -750,6 +752,9 @@ def main():
                         to_csv_bytes(gres, index=False),
                         file_name=f"{gsea_analysis.replace(' ', '_')}_{library.replace(' ', '_')}_GSEA.csv",
                     )
+
+    with custom_gsea_tab:
+        render_custom_gsea(organism)
 
     with export_tab:
         active, bundle = current_analysis()
