@@ -70,6 +70,8 @@ def run_ora(
 
     The statistical universe is the set of genes that were actually tested in
     all selected differential-expression comparisons, after mapping to symbols.
+    FDR correction is applied across every eligible pathway in the selected
+    collection; the minimum-overlap rule is only a reporting filter.
     """
     query = gene_ids_to_symbols(selected_gene_ids, annotation)
     background = gene_ids_to_symbols(background_gene_ids, annotation)
@@ -94,9 +96,6 @@ def run_ora(
 
         overlap = query & pathway
         a = len(overlap)
-        if a < int(min_overlap):
-            continue
-
         b = n_query - a
         c = pathway_size - a
         d = n_background - a - b - c
@@ -133,15 +132,20 @@ def run_ora(
             "query_genes": n_query,
             "background_genes": n_background,
             "tested_terms": 0,
+            "reported_terms": 0,
         }
 
-    out = pd.DataFrame(rows)
-    out["FDR"] = _bh_adjust(out["P-value"].to_numpy())
+    all_terms = pd.DataFrame(rows)
+    all_terms["FDR"] = _bh_adjust(all_terms["P-value"].to_numpy())
+    tested_terms = len(all_terms)
+
+    out = all_terms.loc[all_terms["Overlap"] >= int(min_overlap)].copy()
     out = out.sort_values(["FDR", "P-value", "Fold enrichment"], ascending=[True, True, False]).reset_index(drop=True)
     return out, actual_library, {
         "query_genes": n_query,
         "background_genes": n_background,
-        "tested_terms": len(out),
+        "tested_terms": tested_terms,
+        "reported_terms": len(out),
     }
 
 
@@ -248,7 +252,7 @@ def render_ora_panel(
     m1.metric("Genes analysed", stats.get("query_genes", 0))
     m2.metric("Tested background", stats.get("background_genes", 0))
     m3.metric("Terms tested", stats.get("tested_terms", 0))
-    st.caption(f"Resolved library: `{actual_library}`")
+    st.caption(f"Resolved library: `{actual_library}` · {stats.get('reported_terms', len(results))} terms meet the overlap filter")
 
     if results.empty:
         st.warning("No functional terms met the pathway-size and overlap criteria.")
@@ -256,21 +260,20 @@ def render_ora_panel(
 
     show_mode = st.radio(
         "Show enrichment results",
-        ["FDR-significant only", "All tested terms"],
+        ["FDR-significant only", "All reported terms"],
         horizontal=True,
         key="ora_show_mode",
     )
     if show_mode == "FDR-significant only":
         shown = results.loc[results["FDR"] <= float(display_fdr)].copy()
         if shown.empty:
-            st.warning(f"No terms pass FDR ≤ {display_fdr:g}. Switch to 'All tested terms' to inspect the complete table.")
+            st.warning(f"No terms pass FDR ≤ {display_fdr:g}. Switch to 'All reported terms' to inspect the complete table.")
     else:
         shown = results.copy()
 
     if not shown.empty:
         st.dataframe(shown, use_container_width=True, height=430)
         plot_df = shown.head(25).copy()
-        plot_df["-log10 FDR"] = -np.log10(plot_df["FDR"].clip(lower=1e-300))
         fig = px.scatter(
             plot_df,
             x="Fold enrichment",
