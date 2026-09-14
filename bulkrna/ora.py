@@ -5,6 +5,8 @@ from typing import Mapping, Sequence
 
 import numpy as np
 import pandas as pd
+import plotly.express as px
+import streamlit as st
 from scipy.stats import fisher_exact
 
 from bulkrna.enrichment import load_library_gene_sets
@@ -141,3 +143,149 @@ def run_ora(
         "background_genes": n_background,
         "tested_terms": len(out),
     }
+
+
+def render_ora_panel(
+    history: Mapping[str, object],
+    selected_comparisons: Sequence[str],
+    region_name: str,
+    region_genes: Sequence[str],
+    annotation: pd.DataFrame | None,
+    species: str,
+    direction_key: str,
+    padj_cut: float,
+    lfc_cut: float,
+) -> None:
+    """Render a self-contained ORA panel for the currently selected Venn region."""
+    st.divider()
+    st.markdown("##### Functional enrichment of this Venn region (ORA)")
+    st.caption(
+        "Tests whether functional categories are over-represented in the selected genes. "
+        "The background is restricted to genes that were actually tested in every selected comparison. "
+        "This is over-representation analysis (ORA), not GSEA."
+    )
+
+    if annotation is None:
+        st.warning("Functional enrichment needs gene-symbol annotation, which is unavailable in this session.")
+        return
+    if not region_genes:
+        st.info("This Venn region contains no genes, so enrichment cannot be calculated.")
+        return
+
+    c1, c2, c3 = st.columns(3)
+    library = c1.selectbox(
+        "Functional collection",
+        [
+            "GO Biological Process",
+            "GO Molecular Function",
+            "GO Cellular Component",
+            "Reactome",
+            "KEGG",
+        ],
+        key="ora_library",
+    )
+    display_fdr = c2.number_input(
+        "Display FDR ≤",
+        min_value=0.0001,
+        max_value=1.0,
+        value=0.05,
+        step=0.01,
+        format="%.4f",
+        key="ora_display_fdr",
+    )
+    min_overlap = c3.number_input(
+        "Minimum overlapping genes",
+        min_value=1,
+        max_value=50,
+        value=2,
+        step=1,
+        key="ora_min_overlap",
+    )
+
+    signature = (
+        tuple(selected_comparisons),
+        str(direction_key),
+        float(padj_cut),
+        float(lfc_cut),
+        str(region_name),
+        str(library),
+        int(min_overlap),
+    )
+
+    if st.button("▶ RUN FUNCTIONAL ENRICHMENT", use_container_width=True, key="run_ora_button"):
+        try:
+            background_ids = common_tested_background_gene_ids(history, selected_comparisons)
+            with st.spinner("Running over-representation analysis…"):
+                results, actual_library, stats = run_ora(
+                    selected_gene_ids=list(region_genes),
+                    background_gene_ids=list(background_ids),
+                    annotation=annotation,
+                    library=library,
+                    species=species,
+                    min_overlap=int(min_overlap),
+                    min_pathway_size=5,
+                    max_pathway_size=1000,
+                )
+            st.session_state["ora_last"] = {
+                "signature": signature,
+                "results": results,
+                "library": actual_library,
+                "stats": stats,
+            }
+            st.success(f"Functional enrichment complete using {actual_library}.")
+        except Exception as exc:
+            st.exception(exc)
+
+    last = st.session_state.get("ora_last")
+    if not last or last.get("signature") != signature:
+        return
+
+    results = last["results"].copy()
+    stats = last["stats"]
+    actual_library = last["library"]
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Genes analysed", stats.get("query_genes", 0))
+    m2.metric("Tested background", stats.get("background_genes", 0))
+    m3.metric("Terms tested", stats.get("tested_terms", 0))
+    st.caption(f"Resolved library: `{actual_library}`")
+
+    if results.empty:
+        st.warning("No functional terms met the pathway-size and overlap criteria.")
+        return
+
+    show_mode = st.radio(
+        "Show enrichment results",
+        ["FDR-significant only", "All tested terms"],
+        horizontal=True,
+        key="ora_show_mode",
+    )
+    if show_mode == "FDR-significant only":
+        shown = results.loc[results["FDR"] <= float(display_fdr)].copy()
+        if shown.empty:
+            st.warning(f"No terms pass FDR ≤ {display_fdr:g}. Switch to 'All tested terms' to inspect the complete table.")
+    else:
+        shown = results.copy()
+
+    if not shown.empty:
+        st.dataframe(shown, use_container_width=True, height=430)
+        plot_df = shown.head(25).copy()
+        plot_df["-log10 FDR"] = -np.log10(plot_df["FDR"].clip(lower=1e-300))
+        fig = px.scatter(
+            plot_df,
+            x="Fold enrichment",
+            y="Term",
+            size="Overlap",
+            hover_data=["FDR", "P-value", "Genes", "Pathway size in background"],
+            title=f"Functional enrichment · {region_name}",
+        )
+        fig.update_layout(height=max(550, 24 * len(plot_df) + 180))
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.download_button(
+        "Download full enrichment results (CSV)",
+        results.to_csv(index=False).encode("utf-8"),
+        file_name="venn_region_functional_enrichment.csv",
+        mime="text/csv",
+        key="download_ora_results",
+    )
